@@ -270,8 +270,9 @@
       border-left: 3px solid var(--purple);
       border-radius: var(--radius);
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 10px;
+      gap: 6px 10px;
       padding: 10px 12px;
       box-shadow: var(--shadow);
       transition: border-left-color 0.2s;
@@ -281,12 +282,18 @@
 
     .item-name {
       flex: 1;
+      min-width: 140px;
       font-weight: 500;
       font-size: 0.95rem;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      word-break: break-word;
+      white-space: normal;
+    }
+
+    .item-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
     }
 
     .qty-wrap { display: flex; align-items: center; gap: 4px; }
@@ -773,7 +780,10 @@
       db.textContent = "X";
       db.onclick     = () => deleteItem(item.n);
 
-      li.append(nm, qw, tb, db);
+      const ctrl = document.createElement("div");
+      ctrl.className = "item-controls";
+      ctrl.append(qw, tb, db);
+      li.append(nm, ctrl);
       ul.appendChild(li);
     });
   }
@@ -874,7 +884,7 @@
           messages: [
             {
               role: "system",
-              content: `You are a grocery receipt parser. When given a receipt image, return ONLY a JSON array of food and drink item names. Rules: 1) Include only actual food and beverage products. 2) Exclude store name, address, phone, dates, prices, totals, tax, payment info, manufacturer names, loyalty points, cashier info, transaction numbers, bag fees, and any non-food items. 3) Clean up item names, remove size/weight and UPC codes, make names human readable. 4) Return ONLY a raw JSON array. No explanation, no markdown, no extra text.`
+              content: `You are a grocery receipt parser. When given a receipt image, return ONLY a JSON array of clean food and drink item names. Follow these rules strictly: 1) Include only actual food and beverage products. 2) Exclude everything else: store name, address, phone, dates, prices, totals, tax, payment info, loyalty points, cashier info, transaction numbers, bag fees, non-food items. 3) Strip ALL brand and manufacturer names from item names. For example: 'De Wafelbakkers Buttermilk Pancakes' becomes 'Buttermilk Pancakes', 'Fresh Romaine Lettuce Hearts' becomes 'Romaine Lettuce', 'Eggo Cinnamon Waffles' becomes 'Cinnamon Waffles', 'Kraft Shredded Cheddar' becomes 'Shredded Cheddar', 'Tyson Chicken Breast' becomes 'Chicken Breast'. 4) Remove size, weight, count, and UPC codes from names. 5) Fix spelling and abbreviations to be human readable. 6) Return ONLY a raw JSON array like ["Eggs","Whole Milk","Romaine Lettuce"]. No explanation, no markdown, no extra text.`
             },
             {
               role: "user",
