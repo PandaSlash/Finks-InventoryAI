@@ -407,6 +407,37 @@
     /* Action row */
     .action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
+    /* Toast notification */
+    #toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--surface2);
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      opacity: 0;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    #toast.err {
+      border-color: var(--orange);
+      color: var(--orange);
+    }
+
     /* ══════════════════════════════════════
        SETTINGS PAGE
     ══════════════════════════════════════ */
@@ -530,15 +561,16 @@
 
       <div class="upload-options">
         <label class="upload-label" for="file-camera">Take Photo</label>
-        <input id="file-camera" type="file" accept="image/*" capture="environment" style="display:none" onchange="previewImg(event)" />
+        <input id="file-camera" type="file" accept="image/*" capture="environment" style="display:none" onchange="previewImgs(event)" />
 
-        <label class="upload-label" for="file-upload">Upload Photo</label>
-        <input id="file-upload" type="file" accept="image/*" style="display:none" onchange="previewImg(event)" />
+        <label class="upload-label" for="file-upload">Upload Photos</label>
+        <input id="file-upload" type="file" accept="image/*" multiple style="display:none" onchange="previewImgs(event)" />
       </div>
 
       <div id="preview-wrap">
-        <img id="preview-img" alt="Receipt preview" />
-        <button id="scan-btn" class="btn-primary btn-sm" onclick="scanReceipt()">Scan Receipt</button>
+        <div id="preview-thumbs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+        <div id="scan-count" style="font-size:0.8rem;color:var(--muted);margin-bottom:8px"></div>
+        <button id="scan-btn" class="btn-primary btn-sm" onclick="scanReceipts()">Scan Receipts</button>
       </div>
 
       <p id="status-msg" class="s-msg"></p>
@@ -841,123 +873,138 @@
   // ══════════════════════════════════════════════════════════════
   //  RECEIPT SCANNER
   // ══════════════════════════════════════════════════════════════
-  function previewImg(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    imgMime = file.type || "image/jpeg";
-    const reader = new FileReader();
-    reader.onload = e => {
-      const url = e.target.result;
-      document.getElementById("preview-img").src = url;
-      document.getElementById("preview-wrap").style.display = "block";
-      imgB64 = url.split(",")[1];
-    };
-    reader.readAsDataURL(file);
+  // Holds array of {b64, mime} objects for multi-image scanning
+  let imgQueue = [];
+
+  function previewImgs(event) {
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
+    imgQueue = [];
+    const thumbs = document.getElementById("preview-thumbs");
+    const countEl = document.getElementById("scan-count");
+    thumbs.innerHTML = "";
+
+    let loaded = 0;
+    files.forEach((file, idx) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const url = e.target.result;
+        imgQueue[idx] = { b64: url.split(",")[1], mime: file.type || "image/jpeg" };
+        // Show thumbnail
+        const img = document.createElement("img");
+        img.src = url;
+        img.style.cssText = "width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border)";
+        thumbs.appendChild(img);
+        loaded++;
+        if (loaded === files.length) {
+          document.getElementById("preview-wrap").style.display = "block";
+          countEl.textContent = files.length + " photo" + (files.length > 1 ? "s" : "") + " selected";
+          document.getElementById("scan-btn").textContent = "Scan " + (files.length > 1 ? files.length + " Receipts" : "Receipt");
+        }
+      };
+      reader.readAsDataURL(file);
+    });
     const other = event.target.id === "file-camera" ? "file-upload" : "file-camera";
     document.getElementById(other).value = "";
   }
 
-  async function scanReceipt() {
-    if (!imgB64) { alert("Please choose or take a receipt photo first."); return; }
-    if (!openAiKey) {
-      alert("Please add your OpenAI API key in Settings first.");
-      return;
-    }
+  async function scanReceipts() {
+    if (!imgQueue.length) { alert("Please choose or take a receipt photo first."); return; }
+    if (!openAiKey) { alert("Please add your OpenAI API key in Settings first."); return; }
 
     const btn = document.getElementById("scan-btn");
     const msg = document.getElementById("status-msg");
-    btn.disabled    = true;
-    btn.textContent = "Scanning...";
-    msg.className   = "s-msg ok";
-    msg.textContent = "Sending to GPT-4o Mini...";
+    btn.disabled = true;
+    msg.className = "s-msg ok";
 
-    try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + openAiKey
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          max_tokens: 1000,
-          messages: [
-            {
-              role: "system",
-              content: `You are a grocery receipt parser. When given a receipt image, return ONLY a JSON array of clean food and drink item names. Follow these rules strictly: 1) Include only actual food and beverage products. 2) Exclude everything else: store name, address, phone, dates, prices, totals, tax, payment info, loyalty points, cashier info, transaction numbers, bag fees, non-food items. 3) Strip ALL brand and manufacturer names from item names. For example: 'De Wafelbakkers Buttermilk Pancakes' becomes 'Buttermilk Pancakes', 'Fresh Romaine Lettuce Hearts' becomes 'Romaine Lettuce', 'Eggo Cinnamon Waffles' becomes 'Cinnamon Waffles', 'Kraft Shredded Cheddar' becomes 'Shredded Cheddar', 'Tyson Chicken Breast' becomes 'Chicken Breast'. 4) Remove size, weight, count, and UPC codes from names. 5) Fix spelling and abbreviations to be human readable. 6) Return ONLY a raw JSON array like ["Eggs","Whole Milk","Romaine Lettuce"]. No explanation, no markdown, no extra text.`
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: "data:" + imgMime + ";base64," + imgB64,
-                    detail: "high"
-                  }
-                },
-                {
-                  type: "text",
-                  text: "Parse this receipt and return only the food and drink items as a JSON array."
-                }
-              ]
-            }
-          ]
-        })
-      });
+    let totalFound = 0;
+    let totalAdded = 0;
 
-      if (!res.ok) {
-        const e = await res.json();
-        throw new Error(e.error?.message || "OpenAI API error");
-      }
+    for (let i = 0; i < imgQueue.length; i++) {
+      const { b64, mime } = imgQueue[i];
+      btn.textContent = imgQueue.length > 1 ? "Scanning " + (i+1) + " of " + imgQueue.length + "..." : "Scanning...";
+      msg.textContent = imgQueue.length > 1 ? "Processing image " + (i+1) + " of " + imgQueue.length + "..." : "Sending to GPT-4o Mini...";
 
-      const data    = await res.json();
-      const content = data.choices?.[0]?.message?.content || "";
-
-      // Parse the JSON array from the response
-      let items = [];
       try {
-        const clean = content.replace(/```json|```/g, "").trim();
-        items = JSON.parse(clean);
-        if (!Array.isArray(items)) throw new Error("Not an array");
-      } catch(e) {
-        throw new Error("Could not parse response. Try again.");
-      }
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + openAiKey
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            max_tokens: 1000,
+            messages: [
+              {
+                role: "system",
+                content: `You are a grocery receipt parser. When given a receipt image, return ONLY a JSON array of clean food and drink item names. Follow these rules strictly: 1) Include only actual food and beverage products. 2) Exclude everything else: store name, address, phone, dates, prices, totals, tax, payment info, loyalty points, cashier info, transaction numbers, bag fees, non-food items. 3) Strip ALL brand and manufacturer names from item names. For example: 'De Wafelbakkers Buttermilk Pancakes' becomes 'Buttermilk Pancakes', 'Fresh Romaine Lettuce Hearts' becomes 'Romaine Lettuce', 'Eggo Cinnamon Waffles' becomes 'Cinnamon Waffles', 'Kraft Shredded Cheddar' becomes 'Shredded Cheddar', 'Tyson Chicken Breast' becomes 'Chicken Breast'. 4) Remove size, weight, count, and UPC codes from names. 5) Fix spelling and abbreviations to be human readable. 6) Return ONLY a raw JSON array like ["Eggs","Whole Milk","Romaine Lettuce"]. No explanation, no markdown, no extra text.`
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "image_url",
+                    image_url: { url: "data:" + mime + ";base64," + b64, detail: "high" }
+                  },
+                  { type: "text", text: "Parse this receipt and return only the food and drink items as a JSON array." }
+                ]
+              }
+            ]
+          })
+        });
 
-      if (!items.length) {
-        setMsg("status-msg", "No food items found on this receipt.", false);
-        return;
-      }
-
-      let added = 0;
-      items.forEach(name => {
-        name = name.toString().trim();
-        if (!name) return;
-        if (!inv.find(i => i.n.toLowerCase() === name.toLowerCase())) {
-          inv.push({ n: name, s: "have", q: 1, d: new Date().toLocaleDateString() });
-          added++;
+        if (!res.ok) {
+          const e = await res.json();
+          throw new Error(e.error?.message || "OpenAI API error");
         }
-      });
 
-      save(); renderList(); updateSummary();
-      setMsg("status-msg", "Found " + items.length + " items, " + added + " new added!", true);
+        const data    = await res.json();
+        const content = data.choices?.[0]?.message?.content || "";
 
-      if (scriptUrl) {
-        await pushSheets(true);
-        setMsg("status-msg", "Found " + items.length + " items, " + added + " added and synced!", true);
+        let items = [];
+        try {
+          const clean = content.replace(/```json|```/g, "").trim();
+          items = JSON.parse(clean);
+          if (!Array.isArray(items)) throw new Error("Not an array");
+        } catch(e) {
+          throw new Error("Could not parse response for image " + (i+1));
+        }
+
+        items.forEach(name => {
+          name = name.toString().trim();
+          if (!name) return;
+          totalFound++;
+          if (!inv.find(i => i.n.toLowerCase() === name.toLowerCase())) {
+            inv.push({ n: name, s: "have", q: 1, d: new Date().toLocaleDateString() });
+            totalAdded++;
+          }
+        });
+
+      } catch(e) {
+        showToast("Error on image " + (i+1) + ": " + e.message, true);
       }
-
-    } catch (e) {
-      setMsg("status-msg", "Error: " + e.message, false);
-    } finally {
-      btn.disabled    = false;
-      btn.textContent = "Scan Receipt";
     }
+
+    save(); renderList(); updateSummary();
+
+    const summary = imgQueue.length > 1
+      ? "Scanned " + imgQueue.length + " receipts: " + totalFound + " items, " + totalAdded + " new added!"
+      : totalFound + " items found, " + totalAdded + " new added!";
+
+    setMsg("status-msg", summary, true);
+    showToast(summary, false);
+
+    if (scriptUrl) {
+      await pushSheets(true);
+      showToast(summary + " Synced!", false);
+    }
+
+    btn.disabled = false;
+    btn.textContent = "Scan " + (imgQueue.length > 1 ? imgQueue.length + " Receipts" : "Receipt");
   }
 
-  
-
-  // ══════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════
   //  GOOGLE SHEETS
   // ══════════════════════════════════════════════════════════════
   function saveOpenAiKey() {
@@ -1009,9 +1056,9 @@
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({ action: "push", items: inv })
       });
-      if (!silent) setMsg("sync-msg", "Pushed " + inv.length + " items to sheet!", true);
+      if (!silent) { setMsg("sync-msg", "", true); showToast("Pushed " + inv.length + " items to sheet!", false); }
     } catch (e) {
-      if (!silent) setMsg("sync-msg", "Push error: " + e.message, false);
+      if (!silent) { setMsg("sync-msg", "", true); showToast("Push error: " + e.message, true); }
     }
   }
 
@@ -1022,20 +1069,22 @@
       const r    = await fetch(scriptUrl + "?action=pull");
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || "Pull failed");
-      const rows = (data.data || []).slice(1);
-      if (!rows.length) { setMsg("sync-msg", "Sheet is empty.", false); return; }
-      rows.forEach(row => {
-        if (!row[0]) return;
-        const ex  = inv.find(i => i.n.toLowerCase() === row[0].toLowerCase());
-        const qty = parseInt(row[2]) || 0;
-        const st  = (row[1] || "").toString().trim().toLowerCase() === "need" ? "need" : "have";
-        if (ex) { ex.s = st; ex.q = qty; }
-        else inv.push({ n: row[0], s: st, q: qty, d: row[3] || new Date().toLocaleDateString() });
-      });
+      const rows = (data.data || []).slice(1).filter(row => row[0]);
+      if (!rows.length) { showToast("Sheet is empty.", true); return; }
+
+      // Sheet is master — replace entire inventory with sheet contents
+      inv = rows.map(row => ({
+        n: row[0],
+        s: (row[1] || "").toString().trim().toLowerCase() === "need" ? "need" : "have",
+        q: parseInt(row[2]) || 0,
+        d: row[3] || new Date().toLocaleDateString()
+      }));
+
       save(); renderList(); updateSummary();
-      setMsg("sync-msg", "Loaded " + rows.length + " items from sheet!", true);
+      setMsg("sync-msg", "", true);
+      showToast("Loaded " + inv.length + " items from sheet!", false);
     } catch (e) {
-      setMsg("sync-msg", "Pull error: " + e.message + " (ensure Apps Script is deployed as Anyone)", false);
+      showToast("Pull error: " + e.message, true);
     }
   }
 
@@ -1065,5 +1114,6 @@
     el.className   = "s-msg " + (ok ? "ok" : "err");
   }
 </script>
+<div id="toast"></div>
 </body>
 </html>
