@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fink's Inventory</title>
+  <style>
+    :root {
+      --bg:         #0a0812;
+      --surface:    #120e24;
+      --surface2:   #1c1535;
+      --border:     #2e2256;
+      --text:       #f0e8ff;
+      --muted:      #8878aa;
+      --have:       #F3A10D;
+      --have-bg:    #231800;
+      --need:       #DF4601;
+      --need-bg:    #220c00;
+      --accent:     #241773;
+      --accent-lit: #3d28b8;
+      --accent-bg:  #150f2e;
+      --gold:       #F3A10D;
+      --orange:     #DF4601;
+      --purple:     #241773;
+      --radius:     10px;
+      --shadow:     0 2px 12px rgba(0,0,0,0.6);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Pages ── */
+    .page {
+      display: none;
+      position: fixed;
+      inset: 0;
+      overflow-y: auto;
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse at top left, rgba(36,23,115,0.5) 0%, transparent 55%),
+        radial-gradient(ellipse at bottom right, rgba(223,70,1,0.18) 0%, transparent 55%);
+    }
+    .page.active { display: block; }
+
+    /* ══════════════════════════════════════
+       SHARED HEADER
+    ══════════════════════════════════════ */
+    header {
+      background: linear-gradient(120deg, #150f2e 0%, #241773 50%, #1a0800 100%);
+      border-bottom: 3px solid var(--gold);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 3px 20px rgba(243,161,13,0.2);
+    }
+
+    header h1 {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--gold);
+      text-shadow: 0 0 24px rgba(243,161,13,0.4);
+      letter-spacing: 0.03em;
+      flex: 1;
+    }
+
+    .header-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 8px;
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.1rem;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .header-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+    #sync-badge {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--orange);
+      background: var(--need-bg);
+      color: var(--orange);
+      white-space: nowrap;
+    }
+
+    #sync-badge.badge-ok {
+      border-color: var(--gold);
+      background: var(--have-bg);
+      color: var(--gold);
+    }
+
+    /* ══════════════════════════════════════
+       MAIN PAGE
+    ══════════════════════════════════════ */
+    main { max-width: 680px; margin: 0 auto; padding: 20px 16px 100px; }
+
+    /* Summary */
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+
+    .stat-val {
+      font-size: 1.6rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--gold);
+    }
+
+    .stat-lbl {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h2 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+
+    /* Inputs */
+    input[type="text"],
+    input[type="search"],
+    input[type="url"],
+    input[type="password"],
+    input[type="number"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius);
+      outline: none;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      transition: border-color 0.2s;
+    }
+
+    input::placeholder { color: var(--muted); }
+    input:focus        { border-color: var(--gold); }
+
+    .add-row { display: flex; gap: 8px; margin-bottom: 14px; }
+
+    #manual-input {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+    }
+
+    .toolbar { display: flex; gap: 8px; margin-bottom: 14px; }
+
+    #search-bar {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+    }
+
+    /* Buttons */
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+    }
+
+    button:active { transform: scale(0.97); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--purple), var(--accent-lit));
+      color: var(--gold);
+      padding: 10px 18px;
+      border: 1px solid var(--gold);
+    }
+
+    .btn-primary:hover { box-shadow: 0 0 16px rgba(243,161,13,0.3); }
+
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+    }
+
+    .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
+
+    .btn-sm { padding: 6px 14px; font-size: 0.82rem; }
+
+    .btn-danger {
+      background: var(--surface2);
+      color: var(--orange);
+      border: 1px solid var(--orange);
+      padding: 10px 14px;
+    }
+
+    /* Filter tabs */
+    .filter-row { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+
+    .filter-btn {
+      padding: 7px 16px;
+      border-radius: 999px;
+      font-size: 0.83rem;
+      font-weight: 700;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .filter-btn.active {
+      background: var(--purple);
+      color: var(--gold);
+      border-color: var(--gold);
+    }
+
+    /* Item list */
+    #item-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #item-list li {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--purple);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      box-shadow: var(--shadow);
+      transition: border-left-color 0.2s;
+    }
+
+    #item-list li:hover { border-left-color: var(--gold); }
+
+    .item-name {
+      flex: 1;
+      font-weight: 500;
+      font-size: 0.95rem;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .qty-wrap { display: flex; align-items: center; gap: 4px; }
+
+    .q-btn {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--gold);
+      display: flex; align-items: center; justify-content: center;
+      padding: 0;
+    }
+
+    .q-btn:hover { border-color: var(--gold); }
+
+    .q-num {
+      width: 28px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--gold);
+    }
+
+    .tog {
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .tog-have { background: var(--have-bg); color: var(--gold);   border: 1px solid var(--gold);   }
+    .tog-need { background: var(--need-bg); color: var(--orange); border: 1px solid var(--orange); }
+
+    .del-btn {
+      width: 30px; height: 30px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 1rem;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0;
+    }
+
+    .del-btn:hover { background: var(--need-bg); color: var(--orange); }
+
+    #empty-msg {
+      text-align: center;
+      color: var(--muted);
+      padding: 40px;
+      font-size: 0.95rem;
+    }
+
+    /* Sync quick-action bar */
+    .sync-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .sync-bar button { flex: 1; }
+
+    /* Receipt scanner */
+    #preview-wrap { margin-top: 12px; display: none; }
+
+    #preview-img {
+      max-width: 100%;
+      max-height: 200px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .upload-options {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .upload-label {
+      display: inline-block;
+      padding: 7px 16px;
+      border-radius: var(--radius);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .upload-label:hover { border-color: var(--gold); color: var(--gold); }
+
+    /* Status messages */
+    .s-msg {
+      margin-top: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      min-height: 1.2em;
+    }
+
+    .s-msg.ok  { color: var(--gold);   }
+    .s-msg.err { color: var(--orange); }
+
+    /* Action row */
+    .action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+    /* ══════════════════════════════════════
+       SETTINGS PAGE
+    ══════════════════════════════════════ */
+    #settings-page main { padding-top: 24px; }
+
+    .settings-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .settings-section-title {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+    }
+
+    .settings-row {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .settings-row:last-child { border-bottom: none; }
+
+    .settings-row-label {
+      flex: 1;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .settings-row-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 2px;
+      font-weight: 400;
+    }
+
+    .settings-input-row {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .settings-input-row:last-child { border-bottom: none; }
+
+    .settings-input-row label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    .settings-input-row input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 0.9rem;
+    }
+
+    .settings-input-row .row-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 480px) {
+      .summary { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     MAIN PAGE
+══════════════════════════════════════════════════════ -->
+<div id="main-page" class="page active">
+  <header>
+    <h1>Fink's Inventory</h1>
+    <span id="sync-badge">Not Synced</span>
+    <button class="header-btn" onclick="showPage('settings')" title="Settings">&#9881;</button>
+  </header>
+
+  <main>
+
+    <!-- Summary stats -->
+    <div class="summary">
+      <div class="stat">
+        <div class="stat-val" id="s-total">0</div>
+        <div class="stat-lbl">Total</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="s-have" style="color:var(--gold)">0</div>
+        <div class="stat-lbl">Have</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="s-need" style="color:var(--orange)">0</div>
+        <div class="stat-lbl">Need</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="s-qty">0</div>
+        <div class="stat-lbl">Qty</div>
+      </div>
+    </div>
+
+    <!-- Receipt Scanner -->
+    <div class="card">
+      <h2>Receipt Scanner</h2>
+      <p style="font-size:0.8rem;color:var(--gold);font-weight:600;margin-bottom:12px">Powered by GPT-4o Mini</p>
+
+      <div class="upload-options">
+        <label class="upload-label" for="file-camera">Take Photo</label>
+        <input id="file-camera" type="file" accept="image/*" capture="environment" style="display:none" onchange="previewImg(event)" />
+
+        <label class="upload-label" for="file-upload">Upload Photo</label>
+        <input id="file-upload" type="file" accept="image/*" style="display:none" onchange="previewImg(event)" />
+      </div>
+
+      <div id="preview-wrap">
+        <img id="preview-img" alt="Receipt preview" />
+        <button id="scan-btn" class="btn-primary btn-sm" onclick="scanReceipt()">Scan Receipt</button>
+      </div>
+
+      <p id="status-msg" class="s-msg"></p>
+    </div>
+
+    <!-- Add item manually -->
+    <div class="add-row">
+      <input id="manual-input" type="text" placeholder="Add item manually..." onkeydown="if(event.key==='Enter') addManual()" />
+      <button class="btn-primary" onclick="addManual()">+ Add</button>
+    </div>
+
+    <!-- Search -->
+    <div class="toolbar">
+      <input id="search-bar" type="search" placeholder="Search inventory..." oninput="renderList()" />
+    </div>
+
+    <!-- Filter tabs -->
+    <div class="filter-row">
+      <button id="btn-all"  class="filter-btn active" onclick="setFilter('all')">All</button>
+      <button id="btn-have" class="filter-btn"        onclick="setFilter('have')">Have</button>
+      <button id="btn-need" class="filter-btn"        onclick="setFilter('need')">Need</button>
+    </div>
+
+    <!-- Sync quick actions -->
+    <div class="sync-bar">
+      <button class="btn-secondary btn-sm" onclick="pushSheets(false)">Push to Sheet</button>
+      <button class="btn-secondary btn-sm" onclick="pullSheets()">Pull from Sheet</button>
+    </div>
+
+    <!-- Item list -->
+    <ul id="item-list"></ul>
+    <p id="empty-msg" style="display:none">No items found. Add one above!</p>
+    <p id="sync-msg" class="s-msg"></p>
+
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SETTINGS PAGE
+══════════════════════════════════════════════════════ -->
+<div id="settings-page" class="page">
+  <header>
+    <button class="header-btn" onclick="showPage('main')" title="Back" style="font-size:1.2rem">&#8592;</button>
+    <h1>Settings</h1>
+  </header>
+
+  <main style="max-width:680px;margin:0 auto;padding:24px 16px 80px;">
+
+    <!-- OpenAI -->
+    <div class="settings-section">
+      <div class="settings-section-title">Receipt Scanner — OpenAI</div>
+      <div class="settings-input-row">
+        <label>OpenAI API Key</label>
+        <input id="openai-key-input" type="password" placeholder="sk-..." />
+        <div class="row-actions">
+          <button class="btn-primary btn-sm" onclick="saveOpenAiKey()">Save Key</button>
+          <button class="btn-secondary btn-sm" onclick="toggleKeyVisibility()">Show</button>
+        </div>
+        <p id="openai-msg" class="s-msg"></p>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:8px;line-height:1.5">
+          Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--gold)">platform.openai.com/api-keys</a>.<br>
+          Uses GPT-4o Mini — approx $0.001 per scan.
+        </p>
+      </div>
+    </div>
+
+    <!-- Google Sheets -->
+    <div class="settings-section">
+      <div class="settings-section-title">Google Sheets Sync</div>
+
+      <div class="settings-input-row">
+        <label>Spreadsheet Link</label>
+        <input id="sheet-link-display" type="url" readonly
+          value="https://docs.google.com/spreadsheets/d/1-U_P8IMgZwtcsbONFYyXPZI62SU4VZdXgSvuvppw9J0/edit"
+          style="color:var(--gold);cursor:pointer"
+          onclick="window.open(this.value,'_blank')" />
+        <div class="row-actions">
+          <button class="btn-secondary btn-sm" onclick="window.open('https://docs.google.com/spreadsheets/d/1-U_P8IMgZwtcsbONFYyXPZI62SU4VZdXgSvuvppw9J0/edit','_blank')">Open Sheet</button>
+        </div>
+      </div>
+
+      <div class="settings-input-row">
+        <label>Apps Script URL</label>
+        <input id="script-url-input" type="url" placeholder="https://script.google.com/macros/s/..." />
+        <div class="row-actions">
+          <button class="btn-primary btn-sm" onclick="saveScriptUrl()">Save URL</button>
+        </div>
+        <p id="sheet-msg" class="s-msg"></p>
+      </div>
+    </div>
+
+    <!-- Data & Export -->
+    <div class="settings-section">
+      <div class="settings-section-title">Data & Export</div>
+
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Export Inventory</div>
+          <div class="settings-row-sub">Download all items as a CSV file</div>
+        </div>
+        <button class="btn-secondary btn-sm" onclick="exportCSV()">Export CSV</button>
+      </div>
+
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Clear All Data</div>
+          <div class="settings-row-sub">Permanently delete all inventory items</div>
+        </div>
+        <button class="btn-danger btn-sm" onclick="clearAll()">Clear All</button>
+      </div>
+    </div>
+
+    <!-- About -->
+    <div class="settings-section">
+      <div class="settings-section-title">About</div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Fink's Inventory Manager</div>
+          <div class="settings-row-sub">Ravens & Orioles Edition</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+
+  // ── Page navigation — defined first so onclick attributes work ──
+  function showPage(name) {
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    const map = { main: "main-page", settings: "settings-page" };
+    const el = document.getElementById(map[name]);
+    if (el) { el.classList.add("active"); el.scrollTop = 0; }
+  }
+
+
+  const SHEET_URL = "https://docs.google.com/spreadsheets/d/1-U_P8IMgZwtcsbONFYyXPZI62SU4VZdXgSvuvppw9J0/edit";
+  const SCRIPT_DEFAULT = "https://script.google.com/macros/s/AKfycbzO5y15NBoupoYeDAnWaogue2fIhJldV25NoJCZ7oATalHJjiLyYaocpk6cnKbTGiTmhA/exec";
+
+  // ── State ─────────────────────────────────────────────────────
+  let inv        = JSON.parse(localStorage.getItem("inv") || "[]");
+  let filter     = "all";
+  let imgB64     = null;
+  let imgMime    = "image/jpeg";
+  let scriptUrl  = localStorage.getItem("scriptUrl") || SCRIPT_DEFAULT;
+  let openAiKey  = localStorage.getItem("openAiKey") || "";
+
+  // ── Boot ──────────────────────────────────────────────────────
+  window.addEventListener("load", function() {
+    document.getElementById("script-url-input").value = scriptUrl;
+    if (openAiKey) {
+      document.getElementById("openai-key-input").value = openAiKey;
+    }
+    updateBadge();
+    renderList();
+    updateSummary();
+  });
+
+  // (showPage defined at top of script)
+
+  // ══════════════════════════════════════════════════════════════
+  //  BADGE
+  // ══════════════════════════════════════════════════════════════
+  function updateBadge() {
+    const badge = document.getElementById("sync-badge");
+    if (scriptUrl) {
+      badge.textContent = "Connected";
+      badge.classList.add("badge-ok");
+    } else {
+      badge.textContent = "Not Synced";
+      badge.classList.remove("badge-ok");
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  PERSISTENCE
+  // ══════════════════════════════════════════════════════════════
+  function save() { localStorage.setItem("inv", JSON.stringify(inv)); }
+
+  // ══════════════════════════════════════════════════════════════
+  //  SUMMARY
+  // ══════════════════════════════════════════════════════════════
+  function updateSummary() {
+    document.getElementById("s-total").textContent = inv.length;
+    document.getElementById("s-have").textContent  = inv.filter(i => i.s === "have").length;
+    document.getElementById("s-need").textContent  = inv.filter(i => i.s === "need").length;
+    document.getElementById("s-qty").textContent   = inv.reduce((t, i) => t + (i.q || 0), 0);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  RENDER LIST
+  // ══════════════════════════════════════════════════════════════
+  function renderList() {
+    const q  = document.getElementById("search-bar").value.toLowerCase();
+    const ul = document.getElementById("item-list");
+    const em = document.getElementById("empty-msg");
+
+    const rows = inv
+      .filter(i => (filter === "all" || i.s === filter) && i.n.toLowerCase().includes(q))
+      .sort((a, b) => a.n.localeCompare(b.n));
+
+    ul.innerHTML = "";
+    em.style.display = rows.length ? "none" : "block";
+
+    rows.forEach(item => {
+      const li = document.createElement("li");
+
+      const nm = document.createElement("span");
+      nm.className   = "item-name";
+      nm.textContent = item.n;
+
+      const qw = document.createElement("div");
+      qw.className = "qty-wrap";
+
+      const qm = document.createElement("button");
+      qm.className   = "q-btn";
+      qm.textContent = "-";
+      qm.onclick     = () => changeQty(item.n, -1);
+
+      const qn = document.createElement("span");
+      qn.className   = "q-num";
+      qn.textContent = item.q;
+
+      const qp = document.createElement("button");
+      qp.className   = "q-btn";
+      qp.textContent = "+";
+      qp.onclick     = () => changeQty(item.n, 1);
+
+      qw.append(qm, qn, qp);
+
+      const tb = document.createElement("button");
+      tb.className   = "tog " + (item.s === "have" ? "tog-have" : "tog-need");
+      tb.textContent = item.s === "have" ? "Have" : "Need";
+      tb.onclick     = () => toggleStatus(item.n);
+
+      const db = document.createElement("button");
+      db.className   = "del-btn";
+      db.textContent = "X";
+      db.onclick     = () => deleteItem(item.n);
+
+      li.append(nm, qw, tb, db);
+      ul.appendChild(li);
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  FILTERS
+  // ══════════════════════════════════════════════════════════════
+  function setFilter(f) {
+    filter = f;
+    ["all", "have", "need"].forEach(id =>
+      document.getElementById("btn-" + id).classList.toggle("active", id === f)
+    );
+    renderList();
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  QTY / STATUS
+  // ══════════════════════════════════════════════════════════════
+  function changeQty(name, delta) {
+    const item = inv.find(i => i.n === name);
+    if (!item) return;
+    item.q = Math.max(0, item.q + delta);
+    item.s = item.q === 0 ? "need" : "have";
+    save(); renderList(); updateSummary();
+  }
+
+  function toggleStatus(name) {
+    const item = inv.find(i => i.n === name);
+    if (!item) return;
+    if (item.s === "have") { item.s = "need"; item.q = 0; }
+    else { item.s = "have"; item.q = item.q > 0 ? item.q : 1; }
+    save(); renderList(); updateSummary();
+  }
+
+  function deleteItem(name) {
+    inv = inv.filter(i => i.n !== name);
+    save(); renderList(); updateSummary();
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  ADD MANUALLY
+  // ══════════════════════════════════════════════════════════════
+  function addManual() {
+    const el   = document.getElementById("manual-input");
+    const name = el.value.trim();
+    if (!name) return;
+    if (inv.find(i => i.n.toLowerCase() === name.toLowerCase())) {
+      alert("Already in inventory!"); return;
+    }
+    inv.push({ n: name, s: "have", q: 1, d: new Date().toLocaleDateString() });
+    save(); renderList(); updateSummary();
+    el.value = "";
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  RECEIPT SCANNER
+  // ══════════════════════════════════════════════════════════════
+  function previewImg(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    imgMime = file.type || "image/jpeg";
+    const reader = new FileReader();
+    reader.onload = e => {
+      const url = e.target.result;
+      document.getElementById("preview-img").src = url;
+      document.getElementById("preview-wrap").style.display = "block";
+      imgB64 = url.split(",")[1];
+    };
+    reader.readAsDataURL(file);
+    const other = event.target.id === "file-camera" ? "file-upload" : "file-camera";
+    document.getElementById(other).value = "";
+  }
+
+  async function scanReceipt() {
+    if (!imgB64) { alert("Please choose or take a receipt photo first."); return; }
+    if (!openAiKey) {
+      alert("Please add your OpenAI API key in Settings first.");
+      return;
+    }
+
+    const btn = document.getElementById("scan-btn");
+    const msg = document.getElementById("status-msg");
+    btn.disabled    = true;
+    btn.textContent = "Scanning...";
+    msg.className   = "s-msg ok";
+    msg.textContent = "Sending to GPT-4o Mini...";
+
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + openAiKey
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 1000,
+          messages: [
+            {
+              role: "system",
+              content: `You are a grocery receipt parser. When given a receipt image, return ONLY a JSON array of food and drink item names. Rules: 1) Include only actual food and beverage products. 2) Exclude store name, address, phone, dates, prices, totals, tax, payment info, manufacturer names, loyalty points, cashier info, transaction numbers, bag fees, and any non-food items. 3) Clean up item names, remove size/weight and UPC codes, make names human readable. 4) Return ONLY a raw JSON array. No explanation, no markdown, no extra text.`
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: "data:" + imgMime + ";base64," + imgB64,
+                    detail: "high"
+                  }
+                },
+                {
+                  type: "text",
+                  text: "Parse this receipt and return only the food and drink items as a JSON array."
+                }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.error?.message || "OpenAI API error");
+      }
+
+      const data    = await res.json();
+      const content = data.choices?.[0]?.message?.content || "";
+
+      // Parse the JSON array from the response
+      let items = [];
+      try {
+        const clean = content.replace(/```json|```/g, "").trim();
+        items = JSON.parse(clean);
+        if (!Array.isArray(items)) throw new Error("Not an array");
+      } catch(e) {
+        throw new Error("Could not parse response. Try again.");
+      }
+
+      if (!items.length) {
+        setMsg("status-msg", "No food items found on this receipt.", false);
+        return;
+      }
+
+      let added = 0;
+      items.forEach(name => {
+        name = name.toString().trim();
+        if (!name) return;
+        if (!inv.find(i => i.n.toLowerCase() === name.toLowerCase())) {
+          inv.push({ n: name, s: "have", q: 1, d: new Date().toLocaleDateString() });
+          added++;
+        }
+      });
+
+      save(); renderList(); updateSummary();
+      setMsg("status-msg", "Found " + items.length + " items, " + added + " new added!", true);
+
+      if (scriptUrl) {
+        await pushSheets(true);
+        setMsg("status-msg", "Found " + items.length + " items, " + added + " added and synced!", true);
+      }
+
+    } catch (e) {
+      setMsg("status-msg", "Error: " + e.message, false);
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = "Scan Receipt";
+    }
+  }
+
+  
+
+  // ══════════════════════════════════════════════════════════════
+  //  GOOGLE SHEETS
+  // ══════════════════════════════════════════════════════════════
+  function saveOpenAiKey() {
+    const key = document.getElementById("openai-key-input").value.trim();
+    if (!key || !key.startsWith("sk-")) {
+      alert("Please enter a valid OpenAI API key starting with sk-");
+      return;
+    }
+    openAiKey = key;
+    localStorage.setItem("openAiKey", key);
+    setMsg("openai-msg", "OpenAI API key saved!", true);
+    // Update scanner label
+    document.querySelector(".card p").textContent = "Powered by GPT-4o Mini — Ready";
+    document.querySelector(".card p").style.color = "var(--gold)";
+  }
+
+  function toggleKeyVisibility() {
+    const input = document.getElementById("openai-key-input");
+    const btn   = event.target;
+    if (input.type === "password") {
+      input.type = "text";
+      btn.textContent = "Hide";
+    } else {
+      input.type = "password";
+      btn.textContent = "Show";
+    }
+  }
+
+  function saveScriptUrl() {
+    const url = document.getElementById("script-url-input").value.trim();
+    if (!url || !url.startsWith("https://script.google.com")) {
+      alert("Please enter a valid Apps Script URL starting with https://script.google.com");
+      return;
+    }
+    scriptUrl = url;
+    localStorage.setItem("scriptUrl", url);
+    updateBadge();
+    setMsg("sheet-msg", "Script URL saved!", true);
+  }
+
+  async function pushSheets(silent) {
+    if (!scriptUrl) { if (!silent) alert("No Apps Script URL configured. Check Settings."); return; }
+    if (!inv.length) { if (!silent) alert("No items to push."); return; }
+    if (!silent) setMsg("sync-msg", "Pushing...", true);
+    try {
+      await fetch(scriptUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ action: "push", items: inv })
+      });
+      if (!silent) setMsg("sync-msg", "Pushed " + inv.length + " items to sheet!", true);
+    } catch (e) {
+      if (!silent) setMsg("sync-msg", "Push error: " + e.message, false);
+    }
+  }
+
+  async function pullSheets() {
+    if (!scriptUrl) { alert("No Apps Script URL configured. Check Settings."); return; }
+    setMsg("sync-msg", "Loading from sheet...", true);
+    try {
+      const r    = await fetch(scriptUrl + "?action=pull");
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || "Pull failed");
+      const rows = (data.data || []).slice(1);
+      if (!rows.length) { setMsg("sync-msg", "Sheet is empty.", false); return; }
+      rows.forEach(row => {
+        if (!row[0]) return;
+        const ex  = inv.find(i => i.n.toLowerCase() === row[0].toLowerCase());
+        const qty = parseInt(row[2]) || 0;
+        const st  = (row[1] || "").toString().trim().toLowerCase() === "need" ? "need" : "have";
+        if (ex) { ex.s = st; ex.q = qty; }
+        else inv.push({ n: row[0], s: st, q: qty, d: row[3] || new Date().toLocaleDateString() });
+      });
+      save(); renderList(); updateSummary();
+      setMsg("sync-msg", "Loaded " + rows.length + " items from sheet!", true);
+    } catch (e) {
+      setMsg("sync-msg", "Pull error: " + e.message + " (ensure Apps Script is deployed as Anyone)", false);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  DATA UTILITIES
+  // ══════════════════════════════════════════════════════════════
+  function clearAll() {
+    if (!confirm("Clear your entire inventory? This cannot be undone.")) return;
+    inv = []; save(); renderList(); updateSummary();
+    showPage("main");
+  }
+
+  function exportCSV() {
+    if (!inv.length) { alert("No items to export."); return; }
+    let csv = "Item Name,Status,Quantity,Date Added\n";
+    inv.forEach(i => { csv += '"' + i.n + '","' + i.s + '","' + i.q + '","' + i.d + '"\n'; });
+    const a = document.createElement("a");
+    a.href     = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "finks_inventory.csv";
+    a.click();
+  }
+
+  function setMsg(id, msg, ok) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = msg;
+    el.className   = "s-msg " + (ok ? "ok" : "err");
+  }
+</script>
+</body>
+</html>
