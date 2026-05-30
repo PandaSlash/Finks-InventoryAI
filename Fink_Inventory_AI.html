@@ -410,9 +410,9 @@
     /* Toast notification */
     #toast {
       position: fixed;
-      top: 80px;
+      top: 70px;
       left: 50%;
-      transform: translateX(-50%) translateY(-20px);
+      transform: translateX(-50%) translateY(-10px);
       background: var(--surface2);
       border: 1px solid var(--gold);
       color: var(--gold);
@@ -423,9 +423,9 @@
       white-space: nowrap;
       box-shadow: 0 4px 20px rgba(0,0,0,0.5);
       opacity: 0;
-      transition: opacity 0.25s ease, transform 0.25s ease;
+      transition: opacity 0.3s ease, transform 0.3s ease;
       pointer-events: none;
-      z-index: 9999;
+      z-index: 99999;
     }
 
     #toast.show {
@@ -521,6 +521,7 @@
   </style>
 </head>
 <body>
+  <div id="toast"></div>
 
 <!-- ══════════════════════════════════════════════════════
      MAIN PAGE
@@ -938,7 +939,7 @@
             messages: [
               {
                 role: "system",
-                content: `You are a grocery receipt parser. When given a receipt image, return ONLY a JSON array of clean food and drink item names. Follow these rules strictly: 1) Include only actual food and beverage products. 2) Exclude everything else: store name, address, phone, dates, prices, totals, tax, payment info, loyalty points, cashier info, transaction numbers, bag fees, non-food items. 3) Strip ALL brand and manufacturer names from item names. For example: 'De Wafelbakkers Buttermilk Pancakes' becomes 'Buttermilk Pancakes', 'Fresh Romaine Lettuce Hearts' becomes 'Romaine Lettuce', 'Eggo Cinnamon Waffles' becomes 'Cinnamon Waffles', 'Kraft Shredded Cheddar' becomes 'Shredded Cheddar', 'Tyson Chicken Breast' becomes 'Chicken Breast'. 4) Remove size, weight, count, and UPC codes from names. 5) Fix spelling and abbreviations to be human readable. 6) Return ONLY a raw JSON array like ["Eggs","Whole Milk","Romaine Lettuce"]. No explanation, no markdown, no extra text.`
+                content: `You are a household inventory scanner. You can read both receipts AND product labels/bottles/boxes directly from photos. Return ONLY a JSON array of clean item names. Follow these rules: 1) Include food, drinks, AND household products such as: cleaning supplies, laundry detergent, fabric softener, scent beads, dryer sheets, dish soap, hand soap, shampoo, conditioner, body wash, toothpaste, toilet paper, paper towels, trash bags, disinfectant wipes, air freshener, candles, batteries, vitamins, medicine, baby items, pet food, and any other household consumable. 2) If the image is a product label or bottle, identify what the product is from the label text, logo, or packaging - even if partially visible. 3) Exclude: store name, address, phone, dates, prices, totals, tax, payment info, loyalty points, cashier info, transaction numbers, bag fees. 4) Strip ALL brand names. Examples: 'Downy Unstopables Scent Beads' becomes 'Laundry Scent Beads', 'Tide Pods Laundry Detergent' becomes 'Laundry Detergent Pods', 'Bounty Paper Towels' becomes 'Paper Towels', 'Charmin Ultra Soft' becomes 'Toilet Paper', 'Dawn Platinum Dish Soap' becomes 'Dish Soap', 'Tyson Chicken Breast' becomes 'Chicken Breast', 'Eggo Cinnamon Waffles' becomes 'Cinnamon Waffles'. 5) Remove size, weight, count, and UPC codes. 6) Fix abbreviations to be human readable. 7) Return ONLY a raw JSON array like ["Eggs","Laundry Detergent Pods","Paper Towels","Dish Soap"]. No explanation, no markdown, no extra text.`
               },
               {
                 role: "user",
@@ -1114,6 +1115,5 @@
     el.className   = "s-msg " + (ok ? "ok" : "err");
   }
 </script>
-<div id="toast"></div>
 </body>
 </html>
