@@ -389,6 +389,7 @@
       font-weight: 600;
       cursor: pointer;
       transition: border-color 0.2s, color 0.2s;
+      font-family: 'Segoe UI', system-ui, sans-serif;
     }
 
     .upload-label:hover { border-color: var(--gold); color: var(--gold); }
@@ -566,6 +567,8 @@
 
         <label class="upload-label" for="file-upload">Upload Photos</label>
         <input id="file-upload" type="file" accept="image/*" multiple style="display:none" onchange="previewImgs(event)" />
+
+        <button class="upload-label" onclick="openBarcodeScanner()" style="border:none;cursor:pointer">Scan Barcode</button>
       </div>
 
       <div id="preview-wrap">
@@ -575,6 +578,18 @@
       </div>
 
       <p id="status-msg" class="s-msg"></p>
+    </div>
+
+    <!-- Barcode Scanner Overlay -->
+    <div id="barcode-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:10000;flex-direction:column;align-items:center;justify-content:center;">
+      <div style="position:relative;width:100%;max-width:480px;">
+        <video id="barcode-video" autoplay playsinline style="width:100%;border-radius:8px;"></video>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+          <div style="width:70%;height:2px;background:var(--gold);box-shadow:0 0 10px var(--gold);border-radius:2px;"></div>
+        </div>
+      </div>
+      <p id="barcode-status" style="color:var(--gold);font-size:0.9rem;font-weight:600;margin-top:16px;text-align:center;padding:0 20px;">Point camera at a barcode</p>
+      <button onclick="closeBarcodeScanner()" style="margin-top:20px;padding:10px 30px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;font-weight:600;cursor:pointer;">Cancel</button>
     </div>
 
     <!-- Add item manually -->
@@ -1113,6 +1128,183 @@
     if (!el) return;
     el.textContent = msg;
     el.className   = "s-msg " + (ok ? "ok" : "err");
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  BARCODE SCANNER
+  // ══════════════════════════════════════════════════════════════
+  let barcodeStream   = null;
+  let barcodeInterval = null;
+  let barcodeDetector = null;
+
+  async function openBarcodeScanner() {
+    const overlay = document.getElementById("barcode-overlay");
+    const video   = document.getElementById("barcode-video");
+    const status  = document.getElementById("barcode-status");
+
+    // Check BarcodeDetector API support
+    if (!("BarcodeDetector" in window)) {
+      // Fallback: use ZXing via CDN
+      await loadZXing();
+      return;
+    }
+
+    try {
+      barcodeDetector = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"] });
+      barcodeStream   = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = barcodeStream;
+      overlay.style.display = "flex";
+      status.textContent = "Point camera at a barcode";
+
+      barcodeInterval = setInterval(async () => {
+        try {
+          const barcodes = await barcodeDetector.detect(video);
+          if (barcodes.length > 0) {
+            const code = barcodes[0].rawValue;
+            clearInterval(barcodeInterval);
+            status.textContent = "Barcode found: " + code + " - Looking up product...";
+            await lookupBarcode(code);
+          }
+        } catch(e) {}
+      }, 500);
+
+    } catch(e) {
+      overlay.style.display = "flex";
+      status.textContent = "Camera error: " + e.message;
+    }
+  }
+
+  function closeBarcodeScanner() {
+    if (barcodeStream) {
+      barcodeStream.getTracks().forEach(t => t.stop());
+      barcodeStream = null;
+    }
+    if (barcodeInterval) {
+      clearInterval(barcodeInterval);
+      barcodeInterval = null;
+    }
+    document.getElementById("barcode-overlay").style.display = "none";
+    document.getElementById("barcode-status").textContent = "Point camera at a barcode";
+  }
+
+  async function lookupBarcode(barcode) {
+    const status = document.getElementById("barcode-status");
+    try {
+      // Try Open Food Facts first (free, no key needed)
+      const res  = await fetch("https://world.openfoodfacts.org/api/v0/product/" + barcode + ".json");
+      const data = await res.json();
+
+      let productName = null;
+
+      if (data.status === 1 && data.product) {
+        // Get the cleanest name available
+        productName = data.product.product_name_en
+          || data.product.product_name
+          || data.product.generic_name_en
+          || data.product.generic_name
+          || null;
+      }
+
+      // If Open Food Facts didn't find it, try Open Beauty Facts (household/beauty)
+      if (!productName) {
+        const res2  = await fetch("https://world.openbeautyfacts.org/api/v0/product/" + barcode + ".json");
+        const data2 = await res2.json();
+        if (data2.status === 1 && data2.product) {
+          productName = data2.product.product_name_en || data2.product.product_name || null;
+        }
+      }
+
+      if (productName && productName.trim()) {
+        // Strip brand name using OpenAI if key available, otherwise use raw name
+        let cleanName = productName.trim();
+        if (openAiKey) {
+          cleanName = await cleanProductName(productName);
+        }
+        addBarcodeItem(cleanName, barcode);
+      } else {
+        status.textContent = "Product not found in database. Try adding manually.";
+        setTimeout(closeBarcodeScanner, 2500);
+      }
+
+    } catch(e) {
+      status.textContent = "Lookup error: " + e.message;
+      setTimeout(closeBarcodeScanner, 2500);
+    }
+  }
+
+  async function cleanProductName(rawName) {
+    // Use GPT to strip brand name and clean up
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + openAiKey },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 50,
+          messages: [
+            { role: "system", content: "You clean up product names by removing brand names. Return only the generic product name, nothing else. Examples: 'Tide Pods Original Scent 42ct' returns 'Laundry Detergent Pods', 'Downy Unstopables Fresh 13.2oz' returns 'Laundry Scent Beads', 'Tropicana Pure Premium Orange Juice' returns 'Orange Juice', 'Kraft Shredded Cheddar Cheese 8oz' returns 'Shredded Cheddar Cheese'. No punctuation, no explanation." },
+            { role: "user", content: rawName }
+          ]
+        })
+      });
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content?.trim() || rawName;
+    } catch(e) {
+      return rawName;
+    }
+  }
+
+  function addBarcodeItem(name, barcode) {
+    closeBarcodeScanner();
+    if (!name) return;
+
+    if (inv.find(i => i.n.toLowerCase() === name.toLowerCase())) {
+      showToast(name + " is already in inventory!", false);
+      return;
+    }
+
+    inv.push({ n: name, s: "have", q: 1, d: new Date().toLocaleDateString() });
+    save(); renderList(); updateSummary();
+    showToast("Added: " + name, false);
+
+    if (scriptUrl) pushSheets(true);
+  }
+
+  // Fallback for browsers without BarcodeDetector (loads ZXing library)
+  async function loadZXing() {
+    const overlay = document.getElementById("barcode-overlay");
+    const status  = document.getElementById("barcode-status");
+    overlay.style.display = "flex";
+
+    try {
+      // Dynamically load ZXing
+      await new Promise((resolve, reject) => {
+        if (window.ZXing) { resolve(); return; }
+        const s = document.createElement("script");
+        s.src = "https://unpkg.com/@zxing/library@latest/umd/index.min.js";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+
+      const video  = document.getElementById("barcode-video");
+      barcodeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = barcodeStream;
+      status.textContent = "Point camera at a barcode";
+
+      const codeReader = new ZXing.BrowserMultiFormatReader();
+      codeReader.decodeFromVideoElement(video, (result, err) => {
+        if (result) {
+          codeReader.reset();
+          status.textContent = "Barcode found: " + result.getText() + " - Looking up...";
+          lookupBarcode(result.getText());
+        }
+      });
+
+    } catch(e) {
+      status.textContent = "Barcode scanning not supported on this device. Try manually adding the item.";
+      setTimeout(closeBarcodeScanner, 3000);
+    }
   }
 </script>
 </body>
