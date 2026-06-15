@@ -343,6 +343,40 @@
 
     .del-btn:hover { background: var(--need-bg); color: var(--orange); }
 
+    .imp-btn {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .imp-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+    .imp-btn.active {
+      background: var(--have-bg);
+      border-color: var(--gold);
+      color: var(--gold);
+    }
+
+    .item-name-edit {
+      flex: 1;
+      min-width: 140px;
+      font-weight: 500;
+      font-size: 0.95rem;
+      padding: 4px 8px;
+      background: var(--surface2);
+      border: 1px solid var(--gold);
+      border-radius: 6px;
+      color: var(--text);
+      outline: none;
+    }
+
     #empty-msg {
       text-align: center;
       color: var(--muted);
@@ -751,6 +785,9 @@
     if (openAiKey) {
       document.getElementById("openai-key-input").value = openAiKey;
     }
+    // Ensure all items have importance property
+    inv.forEach(i => { if (!("imp" in i)) i.imp = false; });
+    save();
     updateBadge();
     renderList();
     updateSummary();
@@ -797,7 +834,12 @@
 
     const rows = inv
       .filter(i => (filter === "all" || i.s === filter) && i.n.toLowerCase().includes(q))
-      .sort((a, b) => a.n.localeCompare(b.n));
+      .sort((a, b) => {
+        // Important items first, then alphabetical
+        if (a.imp && !b.imp) return -1;
+        if (!a.imp && b.imp) return 1;
+        return a.n.localeCompare(b.n);
+      });
 
     ul.innerHTML = "";
     em.style.display = rows.length ? "none" : "block";
@@ -838,9 +880,18 @@
       db.textContent = "X";
       db.onclick     = () => deleteItem(item.n);
 
+      const impBtn = document.createElement("button");
+      impBtn.className = "imp-btn" + (item.imp ? " active" : "");
+      impBtn.textContent = "!";
+      impBtn.title = "Mark as important";
+      impBtn.onclick = () => toggleImportance(item.n);
+
+      nm.style.cursor = "pointer";
+      nm.ondblclick = () => editItemName(item, nm);
+
       const ctrl = document.createElement("div");
       ctrl.className = "item-controls";
-      ctrl.append(qw, tb, db);
+      ctrl.append(impBtn, qw, tb, db);
       li.append(nm, ctrl);
       ul.appendChild(li);
     });
@@ -1103,7 +1154,8 @@
         n: row[0],
         s: (row[1] || "").toString().trim().toLowerCase() === "need" ? "need" : "have",
         q: parseInt(row[2]) || 0,
-        d: row[3] || new Date().toLocaleDateString()
+        d: row[3] || new Date().toLocaleDateString(),
+        imp: (row[4] || "").toString().toLowerCase() === "true" || (row[4] || "").toString() === "1"
       }));
 
       save(); renderList(); updateSummary();
@@ -1125,8 +1177,8 @@
 
   function exportCSV() {
     if (!inv.length) { alert("No items to export."); return; }
-    let csv = "Item Name,Status,Quantity,Date Added\n";
-    inv.forEach(i => { csv += '"' + i.n + '","' + i.s + '","' + i.q + '","' + i.d + '"\n'; });
+    let csv = "Item Name,Status,Quantity,Date Added,Important\n";
+    inv.forEach(i => { csv += '"' + i.n + '","' + i.s + '","' + i.q + '","' + i.d + '","' + (i.imp ? "true" : "false") + '"\n'; });
     const a = document.createElement("a");
     a.href     = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     a.download = "finks_inventory.csv";
@@ -1138,6 +1190,48 @@
     if (!el) return;
     el.textContent = msg;
     el.className   = "s-msg " + (ok ? "ok" : "err");
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  ITEM EDITING
+  // ══════════════════════════════════════════════════════════════
+  function toggleImportance(name) {
+    const item = inv.find(i => i.n === name);
+    if (!item) return;
+    item.imp = !item.imp;
+    save(); renderList(); updateSummary();
+  }
+
+  function editItemName(item, nmElement) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "item-name-edit";
+    input.value = item.n;
+
+    nmElement.replaceWith(input);
+    input.focus();
+    input.select();
+
+    const save_edit = () => {
+      const newName = input.value.trim();
+      if (!newName) {
+        renderList();
+        return;
+      }
+      if (newName !== item.n && inv.find(i => i.n.toLowerCase() === newName.toLowerCase())) {
+        alert("Item already exists!");
+        renderList();
+        return;
+      }
+      item.n = newName;
+      save(); renderList(); updateSummary();
+    };
+
+    input.onblur = save_edit;
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") save_edit();
+      if (e.key === "Escape") renderList();
+    };
   }
 
   // ══════════════════════════════════════════════════════════════
